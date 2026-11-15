@@ -173,6 +173,13 @@ RUN git clone --depth 1 https://github.com/jetdafih/flint /tmp/flint \
     && make -C /tmp/flint install \
     && rm -rf /tmp/flint
 
+# horizon-free: the latest release tarball is a single binary at its root.
+RUN mkdir -p /home/jet/.local/bin \
+    && curl -fsSL https://github.com/0CYBER/horizon-free/releases/latest/download/horizon-launcher-linux-x86_64.tar.gz \
+       | tar xz -C /home/jet/.local/bin \
+    && chmod +x /home/jet/.local/bin/horizon-launcher \
+    && /home/jet/.local/bin/horizon-launcher account offline Jet
+
 RUN mkdir -p /home/jet/dev
 WORKDIR /home/jet/dev
 
