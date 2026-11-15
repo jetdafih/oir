@@ -6,8 +6,8 @@
 <style>
   html, body { margin: 0; height: 100%; background: #101318; color: #98A0AE; font: 13px ui-monospace, Menlo, Consolas, monospace; }
   #screen { position: fixed; inset: 0; }
-  #msg { position: fixed; top: 10px; left: 14px; z-index: 1; }
-  [hidden] { display: none; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1; pointer-events: none; }
+  [hidden] { display: none !important; }
 </style>
 <div id="msg">starting display...</div>
 <div id="screen"></div>

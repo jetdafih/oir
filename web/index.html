@@ -232,10 +232,18 @@ async function addTab({ id, name, alive }) {
   el.className = 'pane';
   $('panes').append(el);
 
-  const term = new WTerm(el, { core: await GhosttyCore.load(), scrollbackLines: 5000, cursorBlink: false });
+  const term = new WTerm(el, { core: await GhosttyCore.load(), scrollbackLines: 5000, cursorBlink: false,
+    onClipboardWrite: (text) => navigator.clipboard.writeText(text).catch(() => {}) });
   await term.init();
   // wterm hands Tab to the page after Esc (an accessibility exit); TUIs and vim need that Tab.
   el.addEventListener('keydown', (e) => { if (e.key === 'Tab' && term.input) term.input.tabExitArmed = false; }, true);
+
+  // Ctrl+Shift+C and copy-on-select; Shift+drag selects inside TUIs that grab the mouse.
+  const copySel = () => { const s = term.getSelectionText(); if (s) navigator.clipboard.writeText(s).catch(() => {}); return !!s; };
+  el.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c' && copySel()) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+  el.addEventListener('mouseup', () => setTimeout(copySel));
 
   const t = { id, name, base: name, fresh: alive === false, hint: false, el, term, ws: null, ended: false, retry: 0, timer: 0, status: '',
               unread: false, armed: false, closing: false, quietUntil: 0, wbuf: [], wsize: 0, wraf: 0 };

@@ -257,6 +257,9 @@ ensure_container() {
     ' >/dev/null 2>&1 || true
     docker exec -u jet "$CONTAINER_NAME" chmod +x \
       /home/jet/.local/bin/{rd,edit,wr,gl,tools,handoff,commit-msg} >/dev/null 2>&1 || true
+    # Bare `chromium` needs these too (no user namespaces in the container).
+    docker exec -u jet "$CONTAINER_NAME" bash -c \
+      'printf "%s\n" --no-sandbox --disable-gpu --disable-dev-shm-usage --ozone-platform=wayland > ~/.config/chromium-flags.conf' >/dev/null 2>&1 || true
   fi
 
   exec 9>&-
