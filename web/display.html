@@ -8,14 +8,20 @@
   #screen { position: fixed; inset: 0; }
   #msg { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1; pointer-events: none; }
   [hidden] { display: none !important; }
+  #game { all: unset; position: fixed; top: 8px; right: 10px; z-index: 2; cursor: pointer; padding: 3px 8px;
+    border: 1px solid #2c3342; border-radius: 4px; background: #181c24; color: #98A0AE; font-size: 11px; opacity: .45; }
+  #game:hover, #game.on { opacity: 1; }
+  #game.on { color: #E37B66; border-color: #E37B66; }
 </style>
 <div id="msg">starting display...</div>
 <div id="screen"></div>
+<button id="game" type="button" tabindex="-1" title="Lock the mouse for games: Esc or this button lets it go">game mouse: off</button>
 <script type="module">
 import RFB from '/novnc/core/rfb.js';
+let rfb = null;
 const msg = document.getElementById('msg');
 function go() {
-  const rfb = new RFB(document.getElementById('screen'),
+  rfb = new RFB(document.getElementById('screen'),
     `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/vnc`);
   rfb.scaleViewport = true;
   let last = '';
@@ -34,4 +40,76 @@ function go() {
   });
 }
 go();
+
+/* ---- game mouse ----
+   VNC only sends absolute positions, but a game that locks the pointer reads relative motion.
+   sway turns an absolute position into motion from where the locked cursor sits, so while
+   locked we keep that spot at the screen centre and send centre + movement. It uses noVNC's
+   private _sendMouse/_display/_fbWidth, so re-check it after a noVNC upgrade. */
+const screen = document.getElementById('screen');
+const gbtn = document.getElementById('game');
+let armed = false, dx = 0, dy = 0, raf = 0;
+const locked = () => document.pointerLockElement === screen;
+const label = () => {
+  gbtn.textContent = 'game mouse: ' + (locked() ? 'on' : armed ? 'click to lock' : 'off');
+  gbtn.classList.toggle('on', armed);
+};
+const lock = () => {
+  const r = screen.requestPointerLock({ unadjustedMovement: true });
+  if (r && r.catch) r.catch(() => screen.requestPointerLock());
+};
+const put = (x, y, mask) => {                  // x, y: offset from the screen centre, in remote pixels
+  const k = rfb._display.scale, w = rfb._fbWidth / 2, h = rfb._fbHeight / 2;
+  rfb._sendMouse((w + x) * k, (h + y) * k, mask);
+};
+const flush = () => {
+  raf = 0;
+  const w = rfb._fbWidth / 2 - 1, h = rfb._fbHeight / 2 - 1;
+  while (dx || dy) {                           // a big flick goes out in steps that stay on screen
+    const sx = Math.max(-w, Math.min(w, dx)), sy = Math.max(-h, Math.min(h, dy));
+    put(sx, sy, rfb._mouseButtonMask);
+    dx -= sx; dy -= sy;
+  }
+};
+const mask = (b, down) => { rfb._mouseButtonMask = down ? rfb._mouseButtonMask | b : rfb._mouseButtonMask & ~b; };
+const grab = (type, fn) => screen.addEventListener(type, e => {
+  if (!locked() || !rfb) return;
+  e.stopPropagation(); e.preventDefault();     // keep noVNC from sending its own (stale) position
+  fn(e);
+}, true);
+grab('mousemove', e => {
+  dx += e.movementX; dy += e.movementY;
+  if (!raf) raf = requestAnimationFrame(flush);
+});
+grab('mousedown', e => { mask([1, 2, 4][e.button] || 0, true); put(0, 0, rfb._mouseButtonMask); });
+grab('mouseup', e => { mask([1, 2, 4][e.button] || 0, false); put(0, 0, rfb._mouseButtonMask); });
+grab('contextmenu', () => {});
+grab('wheel', e => {
+  const m = rfb._mouseButtonMask;
+  put(0, 0, m | (e.deltaY < 0 ? 8 : 16));
+  put(0, 0, m);
+});
+document.addEventListener('pointerlockchange', () => {
+  if (rfb) {
+    if (locked()) { dx = dy = 0; put(0, 0, rfb._mouseButtonMask); }   // park the cursor at the centre
+    else { rfb._mouseButtonMask = 0; put(0, 0, 0); }                  // no button stays held
+  }
+  label();
+});
+screen.addEventListener('click', () => { if (armed && !locked()) lock(); });
+gbtn.addEventListener('click', async () => {
+  armed = !armed;
+  if (armed) {
+    try {                                      // fullscreen + key lock lets Esc reach the game
+      await document.documentElement.requestFullscreen();
+      await navigator.keyboard.lock(['Escape']);
+    } catch { /* not supported or refused: still works */ }
+    lock();
+  } else {
+    document.exitPointerLock();
+    try { navigator.keyboard.unlock(); await document.exitFullscreen(); } catch { /* not in fullscreen */ }
+  }
+  label();
+  if (rfb) rfb.focus();
+});
 </script>
