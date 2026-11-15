@@ -57,6 +57,7 @@ RUN pacman -Syu --noconfirm && \
         nodejs npm \
         jdk21-openjdk jdk25-openjdk \
         sway wayvnc grim chromium mesa libglvnd wl-clipboard swaybg ttf-dejavu \
+        libxkbcommon-x11 libxcb \
         procps-ng croc  chafa libcap ripgrep fd \
         zig clang unzip p7zip unrar xz bzip2 zstd lz4 libarchive && \
     pacman -Scc --noconfirm
