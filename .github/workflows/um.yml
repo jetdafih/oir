@@ -25,6 +25,20 @@ jobs:
       VENV: /home/runner/venv
 
     steps:
+      # A run can't delete itself, so each run clears the finished ones before it.
+      # Failed runs stay, because their logs are what you need to see why.
+      - name: Remove earlier runs
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list -R "$GITHUB_REPOSITORY" -w "$GITHUB_WORKFLOW" -s completed -L 100 \
+            --json databaseId,conclusion \
+            -q '.[] | select(.conclusion | IN("success","cancelled","timed_out","skipped","neutral")) | .databaseId' |
+          while read -r id; do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" >/dev/null 2>&1 && echo "deleted run #$id"
+          done || true
+
       # The 6h limit counts from the start of the job; the web terminal reads this
       # to show how much time is left.
       - name: Record start time
