@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# swayrun APP [ARGS]  launch an app inside the sway desktop
+# swayrun APP [ARGS]  launch an app inside the sway desktop (from the current directory)
 [ $# -gt 0 ] || { echo "usage: swayrun APP [ARGS]" >&2; exit 1; }
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -u)}"
-SWAYSOCK="$(ls "$XDG_RUNTIME_DIR"/sway-ipc.* 2>/dev/null | head -1)"
+SWAYSOCK="$(ls -t "$XDG_RUNTIME_DIR"/sway-ipc.* 2>/dev/null | head -1)"
 [ -n "$SWAYSOCK" ] || { echo "sway not running: wayland-browser start" >&2; exit 1; }
 export SWAYSOCK
-swaymsg -q exec "$(printf '%q ' "$@")" && echo .
+# A script keeps sway's command parser away from , and ; in arguments.
+f="$(mktemp "$XDG_RUNTIME_DIR/swayrun.XXXXXX")"
+printf 'rm -f "$0"\ncd %q\nexec %s\n' "$PWD" "$(printf '%q ' "$@")" > "$f"
+swaymsg -q exec "bash $f" && echo .

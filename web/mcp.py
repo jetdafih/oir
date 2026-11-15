@@ -46,7 +46,7 @@ INSTRUCTIONS = (
 _RUN = r"""
 case "$1" in handoff*) ;; *)
   d="$HOME/.handoff"; mkdir -p "$d"
-  x="$(printf %s "${1:0:200}" | tr '\n' ' ')"
+  x="$(printf %s "${1:0:200}" | tr '\n' ' ' | sed -E 's/(ghp_|gho_|github_pat_|sk-)[A-Za-z0-9_-]+/\1***/g; s/((token|password|passwd|secret|api_?key|auth)[A-Za-z_]*[=: ]+)[^ ]+/\1***/Ig')"
   printf '%s %s\n' "$(date +%H:%M)" "$x" >> "$d/cmds.log"
   tail -n 200 "$d/cmds.log" > "$d/c.tmp" && mv "$d/c.tmp" "$d/cmds.log" ;;
 esac
@@ -123,8 +123,8 @@ async def tool_sh(a: dict) -> tuple[str, bool]:
     if cut:
         n = next(_ids)
         path = f"/tmp/out/{os.getpid()}-{n}.log"
-        code, _ = await _docker(["bash", "-c", f"mkdir -p /tmp/out && cat > {path}"], stdin=raw)
-        if code == 0:
+        saved, _ = await _docker(["bash", "-c", f"mkdir -p /tmp/out && cat > {path}"], stdin=raw)
+        if saved == 0:
             shown += f"\n[full: {path}]"
     if code == 124 and not text.endswith("timed out"):
         shown += f"\n[timeout {timeout}s]"

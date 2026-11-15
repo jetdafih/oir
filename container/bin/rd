@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rd FILE [start] [end]  numbered lines, max 200 per call
+# rd FILE [start] [end]  numbered lines, 200 by default, 400 max per call
 f="${1:?usage: rd FILE [start] [end]}"; s="${2:-1}"; e="${3:-$((s+199))}"
 (( e - s > 399 )) && e=$((s+399))
 [[ -f "$f" ]] || { echo "not found: $f"; exit 1; }

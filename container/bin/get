@@ -10,4 +10,4 @@ else
   mkdir -p "$s" && cp -- "$p" "$s/$n" || exit 1
 fi
 l="$(head -n1 "$HOME/dev/.mcp" 2>/dev/null)"
-[ -n "$l" ] && echo "${l%/mcp/*}/f/${l##*/}/$n" || echo "$s/$n"
+[ -n "$l" ] && echo "${l%/mcp/*}/f/${l##*/}/$(node -p 'encodeURIComponent(process.argv[1])' "$n")" || echo "$s/$n"

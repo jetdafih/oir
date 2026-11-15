@@ -89,6 +89,7 @@ COOKIE = "oir"
 TOKENS: dict[str, float] = {}   # token -> expiry (monotonic)
 FAILS: dict[str, tuple[int, float]] = {}
 GLOBAL_FAILS: list[float] = []
+TRUSTED: set[str] = set()       # addresses that already logged in; the global limit skips them
 
 
 def client_ip(request: web.Request) -> str:
@@ -216,23 +217,32 @@ class Session:
 
     def _reap(self) -> None:
         loop = asyncio.get_running_loop()
-        loop.remove_reader(self.fd)
+        fd, pid = self.fd, self.pid
+        loop.remove_reader(fd)
         if self.writer_on:
-            loop.remove_writer(self.fd)
+            loop.remove_writer(fd)
             self.writer_on = False
         try:
-            os.close(self.fd)
+            os.close(fd)
         except OSError:
-            pass
-        code = 0
-        try:
-            _, status = os.waitpid(self.pid, 0)
-            code = os.waitstatus_to_exitcode(status)
-        except ChildProcessError:
             pass
         self.pid = self.fd = None
         self.pending.clear()
         self.scrollback.clear()
+        self._wait(pid, 0)
+
+    def _wait(self, pid: int, tries: int) -> None:
+        # Never block the event loop on a shell that is slow to exit.
+        try:
+            done, status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            done, status = pid, 0
+        if not done and tries < 50:
+            asyncio.get_running_loop().call_later(0.1, self._wait, pid, tries + 1)
+            return
+        if not done:
+            self._signal(pid, signal.SIGKILL)
+        code = os.waitstatus_to_exitcode(status) if done else -1
         for c in list(self.clients):
             c.send_json({"type": "exit", "code": code})
 
@@ -274,9 +284,13 @@ class Session:
         pid = self.pid
         for sig, delay in ((signal.SIGHUP, 0), (signal.SIGKILL, 3)):
             if delay:
-                asyncio.get_running_loop().call_later(delay, self._signal, pid, sig)
+                asyncio.get_running_loop().call_later(delay, self._signal_if_current, pid, sig)
             else:
                 self._signal(pid, sig)
+
+    def _signal_if_current(self, pid: int, sig: int) -> None:
+        if self.pid == pid:           # not reaped, so the pid can't have been reused
+            self._signal(pid, sig)
 
     @staticmethod
     def _signal(pid: int, sig: int) -> None:
@@ -332,7 +346,7 @@ async def login(request: web.Request) -> web.Response:
     for k in [k for k, (_, until) in FAILS.items() if until < now]:
         del FAILS[k]
     count, locked_until = FAILS.get(ip, (0, 0.0))
-    if len(GLOBAL_FAILS) >= GLOBAL_MAX_FAILS:
+    if len(GLOBAL_FAILS) >= GLOBAL_MAX_FAILS and ip not in TRUSTED:
         return web.json_response({"error": "too many attempts, try later"}, status=429)
     if count >= MAX_FAILS and now < locked_until:
         return web.json_response({"error": "too many attempts, try later"}, status=429)
@@ -343,6 +357,7 @@ async def login(request: web.Request) -> web.Response:
     given = str(data.get("password", "")).encode()
     if hmac.compare_digest(given, PASSWORD.encode()):
         FAILS.pop(ip, None)
+        TRUSTED.add(ip)
         for t in [t for t, e in TOKENS.items() if e < now]:
             del TOKENS[t]
         token = secrets.token_urlsafe(32)
@@ -358,8 +373,6 @@ async def login(request: web.Request) -> web.Response:
             max_age=TOKEN_TTL,
         )
         return resp
-    if count >= MAX_FAILS:
-        count = 0  # lockout expired
     FAILS[ip] = (count + 1, now + LOCKOUT_SECONDS)
     GLOBAL_FAILS.append(now)
     await asyncio.sleep(1)

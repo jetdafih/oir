@@ -29,7 +29,7 @@ alive() {
 }
 
 wayland_socket() {
-    basename "$(ls "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)"
+    basename "$(ls -t "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)"
 }
 
 launch_browser() {
@@ -52,6 +52,7 @@ start() {
             echo "compositor was up, browser relaunched (vnc on 0.0.0.0:$VNC_PORT)"
             return 0
         fi
+        if [ -n "${1:-}" ]; then launch_browser "$url"; echo "opened $url"; return 0; fi
         echo "already running (vnc on 0.0.0.0:$VNC_PORT)"
         return 0
     fi
@@ -113,7 +114,7 @@ status() {
 shot() {
     local out="${1:-$LOG/shot.png}"
     command -v grim >/dev/null || die "grim not installed"
-    export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)")}"
+    export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-$(wayland_socket)}"
     grim "$out"
     echo "$out"
 }
